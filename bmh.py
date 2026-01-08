@@ -11,17 +11,17 @@ import shutil
 import tempfile
 import warnings
 
-# Konfigurasi database SQL Server
+
 SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
 PASSWORD = "LEtoy_89"
 TABLE = "dbo.Tbatch"
 
-# Global flag untuk menghentikan pencarian
+
 STOP_SEARCH_FLAG = False
 
-# Konfigurasi batch
+
 MAX_BATCHES_PER_RUN = 4.398.046.511.104  
 
 def check_and_download_xiebo():
@@ -29,7 +29,7 @@ def check_and_download_xiebo():
     xiebo_path = "./xiebo"
     
     if os.path.exists(xiebo_path):
-        # Periksa apakah file executable
+        
         if not os.access(xiebo_path, os.X_OK):
             try:
                 os.chmod(xiebo_path, 0o755)
@@ -38,10 +38,10 @@ def check_and_download_xiebo():
         return True
     
     try:
-        # Download xiebo dari GitHub
+        
         url = "https://github.com/brcbr/xiebo/raw/refs/heads/main/xiebo"
         
-        # Buat context SSL untuk menghindari error certificate
+        
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
@@ -50,20 +50,20 @@ def check_and_download_xiebo():
             with open(xiebo_path, 'wb') as f:
                 f.write(response.read())
         
-        # Buat file executable
+        
         os.chmod(xiebo_path, 0o755)
         
         return True
         
     except Exception as e:
-        print(f"❌ Gagal mendownload xiebo: {e}")
+        print(f"❌ Errd: {e}")
         return False
 
 def check_and_install_dependencies():
    
     pip_packages = ['pyodbc']
     
-    # Cek sistem operasi
+  
     system = platform.system().lower()
     
     try:
@@ -157,7 +157,7 @@ def check_and_install_dependencies():
         return True
 
 def connect_db():
-    """Membuat koneksi ke database SQL Server"""
+    
     try:
         conn = pyodbc.connect(
             "DRIVER={ODBC Driver 17 for SQL Server};"
@@ -172,11 +172,11 @@ def connect_db():
         )
         return conn
     except Exception as e:
-        print(f"❌ Database connection error: {e}")
+        print(f"❌ D Errd: {e}")
         return None
 
 def get_batch_by_id(batch_id):
-    """Mengambil data batch berdasarkan ID"""
+    
     conn = connect_db()
     if not conn:
         return None
@@ -211,7 +211,7 @@ def get_batch_by_id(batch_id):
         return None
 
 def update_batch_status(batch_id, status, found='', wif=''):
-    """Update status batch di database"""
+    
     conn = connect_db()
     if not conn:
         return False
@@ -241,7 +241,7 @@ def update_batch_status(batch_id, status, found='', wif=''):
         return False
 
 def calculate_range_bits(start_hex, end_hex):
-    """Menghitung range bits dari start dan end hex"""
+    
     try:
         start_int = int(start_hex, 16)
         end_int = int(end_hex, 16)
@@ -267,7 +267,7 @@ def calculate_range_bits(start_hex, end_hex):
         return 64  # Default value
 
 def parse_xiebo_output(output_text):
-    """Parse output dari xiebo untuk mencari private key yang ditemukan"""
+    
     global STOP_SEARCH_FLAG
     
     found_info = {
@@ -391,14 +391,14 @@ def display_xiebo_output_real_time(process):
     return output_text
 
 def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
-    """Run xiebo binary langsung dan tampilkan outputnya secara real-time"""
+    
     global STOP_SEARCH_FLAG
     
     cmd = ["./xiebo", "-gpuId", str(gpu_id), "-start", start_hex, 
            "-range", str(range_bits), address]
     
     print(f"\n{'='*80}")
-    print(f"🚀 STARTING XIEBO EXECUTION")
+    print(f"STARTING")
     print(f"{'='*80}")
     print(f"Command: {' '.join(cmd)}")
     print(f"Batch ID: {batch_id if batch_id is not None else 'N/A'}")
@@ -449,7 +449,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         
        
         print(f"\n{'='*80}")
-        print(f"📊 SEARCH RESULT SUMMARY")
+        print(f"SEARCH RESULT SUMMARY")
         print(f"{'='*80}")
         
         if found_info['found_count'] > 0:
@@ -460,10 +460,10 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             print(f"\033[93m❌ Private key not found in this batch\033[0m")
         
         if found_info['speed_info']:
-            print(f"\n📈 Performance: {found_info['speed_info']}")
+            print(f"\n Performance: {found_info['speed_info']}")
         
         if found_info['found'] or found_info['found_count'] > 0:
-            print(f"\n📋 Found information:")
+            print(f"\n Found information:")
             if found_info['raw_output']:
                 for line in found_info['raw_output'].split('\n'):
                     if 'found:' in line.lower() or 'priv' in line.lower():
@@ -544,12 +544,12 @@ def main():
     try:
         import pyodbc
     except ImportError:
-        print("❌ Gagal mengimport pyodbc. Pastikan dependensi terinstall.")
+        print("❌ Gimport py")
         sys.exit(1)
     
     
     if not check_and_download_xiebo():
-        print("❌ Tidak dapat melanjutkan tanpa xiebo executable")
+        print("❌ xie not ")
         sys.exit(1)
     
     
@@ -624,23 +624,23 @@ def main():
             
            
             if batches_processed % 5 == 0 or STOP_SEARCH_FLAG:
-                print(f"\n📈 Progress: {batches_processed} batches processed, current ID: {current_id}")
+                print(f"\n Progress: {batches_processed} batches processed, current ID: {current_id}")
             
             
             if not STOP_SEARCH_FLAG and batches_processed < MAX_BATCHES_PER_RUN:
-                print(f"\n⏱️  Waiting 3 seconds before next batch...")
+                print(f"\n Waiting 3 seconds before next batch...")
                 time.sleep(3)
         
         print(f"\n{'='*80}")
         if STOP_SEARCH_FLAG:
-            print(f"🎯 SEARCH STOPPED - PRIVATE KEY FOUND!")
+            print(f"SEARCH STOPPED - PRIVATE KEY FOUND!")
         elif batches_processed >= MAX_BATCHES_PER_RUN:
             print(f"⏹️  MAX BATCHES REACHED - Processed {batches_processed} batches")
         else:
             print(f"✅ PROCESSING COMPLETED - Processed {batches_processed} batches")
         print(f"{'='*80}")
         
-        print(f"\n📋 Summary:")
+        print(f"\n Summary:")
         print(f"  Start ID: {start_id}")
         print(f"  Last processed ID: {current_id - 1}")
         print(f"  Batches processed: {batches_processed}")
