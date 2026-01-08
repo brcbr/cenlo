@@ -22,10 +22,10 @@ TABLE = "dbo.Tbatch"
 STOP_SEARCH_FLAG = False
 
 # Konfigurasi batch
-MAX_BATCHES_PER_RUN = 4000000000000  # Maksimal 1juta batch per eksekusi
+MAX_BATCHES_PER_RUN = 4.398.046.511.104  
 
 def check_and_download_xiebo():
-    """Memeriksa dan mendownload xiebo jika belum ada"""
+   
     xiebo_path = "./xiebo"
     
     if os.path.exists(xiebo_path):
@@ -60,20 +60,19 @@ def check_and_download_xiebo():
         return False
 
 def check_and_install_dependencies():
-    """Memeriksa dan menginstall dependensi yang diperlukan"""
-    # Daftar paket pip yang diperlukan
+   
     pip_packages = ['pyodbc']
     
     # Cek sistem operasi
     system = platform.system().lower()
     
     try:
-        # 1. Cek dan install pyodbc
+        
         for package in pip_packages:
             try:
                 __import__(package.replace('-', '_'))
             except ImportError:
-                # Install secara silent
+                
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", package, "--quiet", "--disable-pip-version-check"],
                     check=True,
@@ -81,9 +80,9 @@ def check_and_install_dependencies():
                     stderr=subprocess.DEVNULL
                 )
         
-        # 2. Untuk sistem Linux, install dependensi ODBC
+       
         if system == "linux":
-            # Cek apakah msodbcsql17 sudah terinstall
+            
             result = subprocess.run(
                 ["dpkg", "-l", "msodbcsql17"],
                 capture_output=True,
@@ -91,9 +90,9 @@ def check_and_install_dependencies():
             )
             
             if result.returncode != 0 or "msodbcsql17" not in result.stdout:
-                # Install dependensi ODBC secara silent
+               
                 try:
-                    # Download Microsoft key
+                    
                     subprocess.run(
                         ["curl", "-fsSL", "https://packages.microsoft.com/keys/microsoft.asc", "-o", "/tmp/microsoft.asc"],
                         check=True,
@@ -101,7 +100,7 @@ def check_and_install_dependencies():
                         stderr=subprocess.DEVNULL
                     )
                     
-                    # Add key
+                    
                     subprocess.run(
                         ["apt-key", "add", "/tmp/microsoft.asc"],
                         check=True,
@@ -109,7 +108,7 @@ def check_and_install_dependencies():
                         stderr=subprocess.DEVNULL
                     )
                     
-                    # Add repository
+                    
                     subprocess.run(
                         ["curl", "-fsSL", "https://packages.microsoft.com/config/ubuntu/22.04/prod.list", 
                          "-o", "/etc/apt/sources.list.d/mssql-release.list"],
@@ -118,7 +117,7 @@ def check_and_install_dependencies():
                         stderr=subprocess.DEVNULL
                     )
                     
-                    # Update package list
+                    
                     subprocess.run(
                         ["apt-get", "update", "-y"],
                         check=True,
@@ -126,7 +125,7 @@ def check_and_install_dependencies():
                         stderr=subprocess.DEVNULL
                     )
                     
-                    # Install packages dengan environment variable
+                   
                     env = os.environ.copy()
                     env['ACCEPT_EULA'] = 'Y'
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
@@ -140,7 +139,7 @@ def check_and_install_dependencies():
                     )
                     
                 except subprocess.CalledProcessError:
-                    # Fallback: coba install hanya unixodbc-dev
+                   
                     try:
                         subprocess.run(
                             ["apt-get", "install", "-y", "unixodbc-dev"],
@@ -148,13 +147,13 @@ def check_and_install_dependencies():
                             stderr=subprocess.DEVNULL
                         )
                     except:
-                        # Jika masih gagal, lewati saja
+                        
                         pass
         
         return True
         
     except Exception as e:
-        # Suppress warning
+       
         return True
 
 def connect_db():
@@ -185,7 +184,7 @@ def get_batch_by_id(batch_id):
     try:
         cursor = conn.cursor()
         
-        # Ambil data batch berdasarkan ID
+        
         cursor.execute(f"""
             SELECT id, start_range, end_range, status, found, wif
             FROM {TABLE} 
@@ -220,7 +219,7 @@ def update_batch_status(batch_id, status, found='', wif=''):
     try:
         cursor = conn.cursor()
         
-        # Update status batch
+        
         cursor.execute(f"""
             UPDATE {TABLE} 
             SET status = ?, found = ?, wif = ?
@@ -273,7 +272,7 @@ def parse_xiebo_output(output_text):
     
     found_info = {
         'found': False,
-        'found_count': 0,  # Jumlah yang ditemukan dari "Found: X"
+        'found_count': 0,  
         'wif_key': '',
         'address': '',
         'private_key_hex': '',
@@ -289,9 +288,9 @@ def parse_xiebo_output(output_text):
         line_stripped = line.strip()
         line_lower = line_stripped.lower()
         
-        # 1. Cari pattern "Found: X" di baris "Range Finished!"
+        
         if 'range finished!' in line_lower and 'found:' in line_lower:
-            # Ekstrak angka setelah "Found:"
+            
             found_match = re.search(r'found:\s*(\d+)', line_lower)
             if found_match:
                 found_count = int(found_match.group(1))
@@ -300,24 +299,24 @@ def parse_xiebo_output(output_text):
                 found_info['speed_info'] = line_stripped
                 found_lines.append(line_stripped)
                 
-                # Set flag berhenti jika ditemukan 1 atau lebih
+                
                 if found_count >= 1:
                     STOP_SEARCH_FLAG = True
                     print(f"🚨 STOP_SEARCH_FLAG diaktifkan karena Found: {found_count}")
         
-        # 2. Cari pattern Priv (HEX):
+       
         elif 'priv (hex):' in line_lower:
             found_info['found'] = True
             found_info['private_key_hex'] = line_stripped.replace('Priv (HEX):', '').replace('Priv (hex):', '').strip()
             found_lines.append(line_stripped)
         
-        # 3. Cari pattern Priv (WIF):
+        
         elif 'priv (wif):' in line_lower:
             found_info['found'] = True
             wif_value = line_stripped.replace('Priv (WIF):', '').replace('Priv (wif):', '').strip()
             found_info['private_key_wif'] = wif_value
             
-            # Ambil 60 karakter pertama dari WIF key
+           
             if len(wif_value) >= 60:
                 found_info['wif_key'] = wif_value[:60]
             else:
@@ -325,35 +324,35 @@ def parse_xiebo_output(output_text):
                 
             found_lines.append(line_stripped)
         
-        # 4. Cari pattern Address:
+        
         elif 'address:' in line_lower and found_info['found']:
             found_info['address'] = line_stripped.replace('Address:', '').replace('address:', '').strip()
             found_lines.append(line_stripped)
         
-        # 5. Cari pattern "Found" atau "Success" lainnya
+        
         elif any(keyword in line_lower for keyword in ['found', 'success', 'match']) and 'private' in line_lower:
             found_info['found'] = True
             found_lines.append(line_stripped)
     
-    # Gabungkan semua line yang ditemukan
+    
     if found_lines:
         found_info['raw_output'] = '\n'.join(found_lines)
         
-        # Jika WIF key ditemukan, pastikan wif_key terisi
+        
         if found_info['private_key_wif'] and not found_info['wif_key']:
             wif_value = found_info['private_key_wif']
             if len(wif_value) >= 60:
                 found_info['wif_key'] = wif_value[:60]
             else:
                 found_info['wif_key'] = wif_value
-        # Jika HEX ditemukan tapi WIF tidak, gunakan HEX sebagai private_key
+        
         elif found_info['private_key_hex'] and not found_info['wif_key']:
             found_info['wif_key'] = found_info['private_key_hex'][:60] if len(found_info['private_key_hex']) >= 60 else found_info['private_key_hex']
     
     return found_info
 
 def display_xiebo_output_real_time(process):
-    """Menampilkan output xiebo secara real-time"""
+    
     print("\n" + "─" * 80)
     print("🎯 XIEBO OUTPUT (REAL-TIME):")
     print("─" * 80)
@@ -364,25 +363,25 @@ def display_xiebo_output_real_time(process):
         if output_line == '' and process.poll() is not None:
             break
         if output_line:
-            # Tampilkan output dengan format yang lebih baik
+           
             stripped_line = output_line.strip()
             if stripped_line:
-                # Warna untuk output tertentu
+                
                 line_lower = stripped_line.lower()
                 if 'found:' in line_lower or 'success' in line_lower:
-                    # Line dengan hasil ditemukan (warna hijau)
+                    
                     print(f"\033[92m   {stripped_line}\033[0m")
                 elif 'error' in line_lower or 'failed' in line_lower:
-                    # Line dengan error (warna merah)
+                    
                     print(f"\033[91m   {stripped_line}\033[0m")
                 elif 'speed' in line_lower or 'key/s' in line_lower:
-                    # Line dengan informasi speed (warna kuning)
+                    
                     print(f"\033[93m   {stripped_line}\033[0m")
                 elif 'range' in line_lower:
-                    # Line dengan informasi range (warna biru)
+                   
                     print(f"\033[94m   {stripped_line}\033[0m")
                 else:
-                    # Line normal (warna default)
+                   
                     print(f"   {stripped_line}")
             output_lines.append(output_line)
     
@@ -406,14 +405,14 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
     print(f"{'='*80}")
     
     try:
-        # Update status menjadi inprogress jika ada batch_id
+        
         if batch_id is not None:
             update_batch_status(batch_id, 'inprogress')
         
-        # Jalankan xiebo dan tampilkan output secara real-time
+       
         print(f"\n⏳ Launching xiebo process...")
         
-        # Gunakan Popen untuk mendapatkan output real-time
+        
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -423,18 +422,18 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             universal_newlines=True
         )
         
-        # Tampilkan output secara real-time
+        
         output_text = display_xiebo_output_real_time(process)
         
-        # Tunggu proses selesai
+        
         return_code = process.wait()
         
-        # Parse output untuk mencari private key
+        
         found_info = parse_xiebo_output(output_text)
         
-        # Update status berdasarkan hasil
+        
         if batch_id is not None:
-            # Tentukan nilai 'found' berdasarkan found_count atau found status
+            
             if found_info['found_count'] > 0:
                 found_status = 'Yes'
             elif found_info['found']:
@@ -442,13 +441,13 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             else:
                 found_status = 'No'
             
-            # Simpan WIF key jika ditemukan
+           
             wif_key = found_info['wif_key'] if found_info['wif_key'] else ''
             
-            # Update status di database
+            
             update_batch_status(batch_id, 'done', found_status, wif_key)
         
-        # Tampilkan ringkasan hasil pencarian
+       
         print(f"\n{'='*80}")
         print(f"📊 SEARCH RESULT SUMMARY")
         print(f"{'='*80}")
@@ -483,7 +482,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         
         print(f"{'='*80}")
         
-        # Tampilkan return code
+        
         if return_code == 0:
             print(f"\n🟢 Process completed successfully (return code: {return_code})")
         else:
@@ -496,7 +495,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         print(f"⚠️  STOPPED BY USER INTERRUPT (Ctrl+C)")
         print(f"{'='*80}")
         
-        # Update status jika batch diinterupsi
+       
         if batch_id is not None:
             update_batch_status(batch_id, 'interrupted')
         
@@ -509,7 +508,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         print(f"Error: {error_msg}")
         print(f"{'='*80}")
         
-        # Update status error jika ada batch_id
+        
         if batch_id is not None:
             update_batch_status(batch_id, 'error')
         
@@ -518,32 +517,29 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
 def main():
     global STOP_SEARCH_FLAG
     
-    # Reset flag stop search setiap kali program dijalankan
+    
     STOP_SEARCH_FLAG = False
     
-    # Parse arguments
+   
     if len(sys.argv) < 2:
-        print("Xiebo Batch Runner with SQL Server Database")
+        print("BTC PUZZLE #71")
         print("Usage:")
-        print("  Single run: python3 bm.py GPU_ID START_HEX RANGE_BITS ADDRESS")
-        print("  Batch run from DB: python3 bm.py --batch-db GPU_ID START_ID ADDRESS")
+        print("  ./xiebo --batch-db GPU_ID START_ID ADDRESS")
         print("\n⚠️  FEATURES:")
-        print("  - Menggunakan database SQL Server")
-        print("  - Baca range dari tabel Tbatch berdasarkan ID")
-        print(f"  - Maksimal {MAX_BATCHES_PER_RUN} batch per eksekusi")
-        print("  - Auto-stop ketika ditemukan Found: 1 atau lebih")
+        print("  - read range from ID on record table pool")
+        print(f"  - Max {MAX_BATCHES_PER_RUN} batches on 1 execution")
+        print("  - Auto-stop if Found: 1")
         print("  - Real-time output display with colors")
-        print("  - Continue ke ID berikutnya secara otomatis")
-        print("  - Auto-download xiebo dan install dependencies (silent)")
+        print("  - Continue to next ID")
         sys.exit(1)
     
-    # Periksa dan install dependensi secara silent
+   
     try:
         check_and_install_dependencies()
     except:
-        pass  # Abaikan error selama instalasi
+        pass  
     
-    # Import pyodbc setelah instalasi
+    
     global pyodbc
     try:
         import pyodbc
@@ -551,19 +547,19 @@ def main():
         print("❌ Gagal mengimport pyodbc. Pastikan dependensi terinstall.")
         sys.exit(1)
     
-    # Periksa dan download xiebo secara silent
+    
     if not check_and_download_xiebo():
         print("❌ Tidak dapat melanjutkan tanpa xiebo executable")
         sys.exit(1)
     
-    # Batch run from database mode
+    
     if sys.argv[1] == "--batch-db" and len(sys.argv) == 5:
         gpu_id = sys.argv[2]
         start_id = int(sys.argv[3])
         address = sys.argv[4]
         
         print(f"\n{'='*80}")
-        print(f"🚀 BATCH MODE - DATABASE DRIVEN")
+        print(f"BATCH MODE")
         print(f"{'='*80}")
         print(f"GPU: {gpu_id}")
         print(f"Start ID: {start_id}")
@@ -574,11 +570,11 @@ def main():
         current_id = start_id
         batches_processed = 0
         
-        # Loop untuk memproses batch secara berurutan
+
         while batches_processed < MAX_BATCHES_PER_RUN and not STOP_SEARCH_FLAG:
             print(f"\n📋 Processing batch ID: {current_id}")
             
-            # Ambil data batch berdasarkan ID
+            
             batch = get_batch_by_id(current_id)
             
             if not batch:
@@ -598,14 +594,14 @@ def main():
                 current_id += 1
                 continue
             
-            # Ambil data range
+            
             start_range = batch['start_range']
             end_range = batch['end_range']
             
-            # Hitung range bits
+            
             range_bits = calculate_range_bits(start_range, end_range)
             
-            # Run batch
+           
             print(f"\n{'='*80}")
             print(f"▶️  BATCH {batches_processed + 1} (ID: {current_id})")
             print(f"{'='*80}")
@@ -626,11 +622,11 @@ def main():
             batches_processed += 1
             current_id += 1
             
-            # Tampilkan progress
+           
             if batches_processed % 5 == 0 or STOP_SEARCH_FLAG:
                 print(f"\n📈 Progress: {batches_processed} batches processed, current ID: {current_id}")
             
-            # Delay antara batch (kecuali jika STOP_SEARCH_FLAG aktif)
+            
             if not STOP_SEARCH_FLAG and batches_processed < MAX_BATCHES_PER_RUN:
                 print(f"\n⏱️  Waiting 3 seconds before next batch...")
                 time.sleep(3)
@@ -654,7 +650,7 @@ def main():
             print(f"\n🔥 PRIVATE KEY FOUND!")
             print(f"   Check database table Tbatch for details")
         
-    # Single run mode (tetap support untuk backward compatibility)
+    
     elif len(sys.argv) == 5:
         gpu_id = sys.argv[1]
         start_hex = sys.argv[2]
@@ -686,6 +682,6 @@ if __name__ == "__main__":
     
     # Check for color support
     if os.name == 'posix':
-        os.system('')  # Enable ANSI colors on Unix-like systems
+        os.system('')  
     
     main()
