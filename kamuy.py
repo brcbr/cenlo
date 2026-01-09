@@ -197,7 +197,8 @@ def log_xiebo_output(gpu_id, message):
     with open(log_file, 'a', encoding='utf-8') as f:
         f.write(f"[{timestamp}] {message}\n")
 
-def show_log_preview(gpu_id):
+def show_log_preview(gpu_id, is_special_address=False):
+    """Tampilkan preview log dengan manipulasi untuk special address"""
     
     log_file = get_gpu_log_file(gpu_id)
     
@@ -221,6 +222,24 @@ def show_log_preview(gpu_id):
             clean_line = line.strip()
             if ']' in clean_line:
                 clean_line = clean_line.split(']', 1)[1].strip()
+            
+            # Manipulasi log untuk special address jika ditemukan private key
+            if is_special_address:
+                line_lower = clean_line.lower()
+                # Jika line mengandung "found: X" dan X > 0, manipulasi menjadi found: 0
+                if 'found:' in line_lower:
+                    found_match = re.search(r'found:\s*(\d+)', line_lower, re.IGNORECASE)
+                    if found_match:
+                        found_count = int(found_match.group(1))
+                        if found_count > 0:
+                            # Manipulasi: ganti found: X menjadi found: 0
+                            clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
+                
+                # Juga manipulasi jika ada "range finished!" dengan found
+                if 'range finished!' in line_lower and 'found:' in line_lower:
+                    # Pastikan tampilkan sebagai found: 0
+                    clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
+            
             safe_print(f"{gpu_prefix}   {clean_line}")
             
         safe_print(f"{gpu_prefix} 📁 Full log: {log_file}")
@@ -349,7 +368,7 @@ def calculate_range_bits(start_hex, end_hex):
         return 64  # Default value
 
 def parse_xiebo_log(gpu_id, target_address=None):
-    """Parse log file untuk mencari hasil - tanpa debug output"""
+    """Parse log file untuk mencari hasil"""
     found_info = {
         'found': False,
         'found_count': 0,
@@ -407,10 +426,7 @@ def parse_xiebo_log(gpu_id, target_address=None):
             found_info['found'] = True
             wif_value = line_content.replace('Priv (WIF):', '').replace('Priv (wif):', '').strip()
             found_info['private_key_wif'] = wif_value
-            
-            # Simpan WIF key (full untuk database)
             found_info['wif_key'] = wif_value
-            
             found_lines.append(line_content)
         
         # 4. Cari pattern Address
@@ -438,7 +454,8 @@ def parse_xiebo_log(gpu_id, target_address=None):
     
     return found_info
 
-def monitor_xiebo_process(process, gpu_id, batch_id):
+def monitor_xiebo_process(process, gpu_id, batch_id, is_special_address=False):
+    """Monitor process dengan manipulasi log preview untuk special address"""
     
     global LAST_LOG_UPDATE_TIME, SPEED_LINE_COUNTER
     
@@ -465,7 +482,8 @@ def monitor_xiebo_process(process, gpu_id, batch_id):
                 time_since_last_update = (current_time - LAST_LOG_UPDATE_TIME[gpu_id]).total_seconds()
                 
                 if time_since_last_update >= LOG_UPDATE_INTERVAL:
-                    show_log_preview(gpu_id)
+                    # Tampilkan log preview dengan manipulasi untuk special address
+                    show_log_preview(gpu_id, is_special_address)
                     LAST_LOG_UPDATE_TIME[gpu_id] = current_time
     
     return process.poll()  
@@ -513,7 +531,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         )
         
         
-        return_code = monitor_xiebo_process(process, gpu_id, batch_id)
+        return_code = monitor_xiebo_process(process, gpu_id, batch_id, is_special_address)
         
         
         found_info = parse_xiebo_log(gpu_id, address)
@@ -560,6 +578,9 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
                         if found_info['private_key_hex']:
                             log_xiebo_output(gpu_id, f"HEX: {found_info['private_key_hex']}")
                         log_xiebo_output(gpu_id, f"Database updated: status=done, found={found_status}")
+                        
+                        # Tampilkan log preview terakhir dengan manipulasi found=0
+                        show_log_preview(gpu_id, True)
                         
                         # TIDAK mengaktifkan STOP_SEARCH_FLAG untuk special address
                 else:
@@ -693,6 +714,7 @@ def main():
         print(f"\n Log files will be saved in: {os.path.abspath(LOG_DIR)}")
         print(f" Log preview every {LOG_UPDATE_INTERVAL/60} minutes ({LOG_LINES_TO_SHOW} lines)")
         print(f" Special address (no output/no stop): {SPECIAL_ADDRESS_NO_OUTPUT}")
+        print(f" Note: Log preview manipulated for special address (found shown as 0)")
         sys.exit(1)
     
     
@@ -721,12 +743,14 @@ def main():
         
         if is_special_address:
             print(f"Output Mode : SILENT (no terminal output when found)")
+            print(f"Log Manip   : YES (found shown as 0 in preview)")
             print(f"Search Mode : CONTINUE after finding special address")
         else:
             print(f"Output Mode : NORMAL")
+            print(f"Log Manip   : NO (show actual results)")
             print(f"Search Mode : STOP after finding private key")
         
-        print(f"Database    : ALWAYS updated for all addresses")
+        print(f"Database    : ALWAYS updated with actual results")
         print(f"{'='*80}\n")
         
         threads = []
