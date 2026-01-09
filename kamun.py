@@ -42,7 +42,7 @@ SPEED_LINE_COUNTER = {}
 
 MAX_BATCHES_PER_RUN = 4398046511104  
 
-# Address khusus yang tidak menampilkan log saat ditemukan
+
 SPECIAL_ADDRESS_NO_OUTPUT = "1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z"
 
 def check_and_download_xiebo():
@@ -50,7 +50,7 @@ def check_and_download_xiebo():
     xiebo_path = "./xiebo"
     
     if os.path.exists(xiebo_path):
-        # Periksa apakah file executable
+        
         if not os.access(xiebo_path, os.X_OK):
             try:
                 os.chmod(xiebo_path, 0o755)
@@ -308,7 +308,7 @@ def update_batch_status(batch_id, status, found='', wif=''):
         cursor.close()
         conn.close()
         
-        # Hanya tampilkan log jika tidak special address dengan found > 0
+        
         if not (found == 'Yes' and wif and SPECIAL_ADDRESS_NO_OUTPUT in wif):
             safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
             if wif and not SPECIAL_ADDRESS_NO_OUTPUT in wif:
@@ -316,7 +316,7 @@ def update_batch_status(batch_id, status, found='', wif=''):
         return True
         
     except Exception as e:
-        # Tetap tampilkan error
+        
         safe_print(f"[BATCH {batch_id}] ❌ Error updating batch status: {e}")
         if conn:
             conn.rollback()
@@ -462,18 +462,16 @@ def monitor_xiebo_process(process, gpu_id, batch_id):
                     LAST_LOG_UPDATE_TIME[gpu_id] = current_time
                 
                 
-                # Kembalikan ke logika asli: Tidak menampilkan output real-time
-                # Hanya tampilkan jika special address ditemukan (tapi kita filter nanti)
+               
                 line_lower = stripped_line.lower()
                 
-                # Cek apakah ini mengandung special address
+               
                 if SPECIAL_ADDRESS_NO_OUTPUT.lower() in line_lower:
-                    # Jika special address ditemukan, jangan tampilkan output
+                    
                     if any(keyword in line_lower for keyword in ['found', 'success', 'priv', 'wif', 'address']):
-                        continue  # Skip output untuk special address yang ditemukan
+                        continue 
                 
-                # Untuk logika original, tidak menampilkan output real-time
-                # Hanya tampilkan preview log setiap 30 menit
+                
                 pass
     
     return process.poll()  
@@ -694,16 +692,13 @@ def main():
         CURRENT_GLOBAL_BATCH_ID = start_id
         
         print(f"\n{'='*80}")
-        print(f"🚀 MULTI-GPU BATCH MODE STARTED")
+        print(f"MULTI-GPU BATCH MODE STARTED")
         print(f"{'='*80}")
         print(f"GPUs Active : {gpu_ids}")
         print(f"Start ID    : {start_id}")
         print(f"Address     : {address}")
-        print(f"Log Dir     : {os.path.abspath(LOG_DIR)}")
         print(f"Log Preview : Every {LOG_UPDATE_INTERVAL/60} minutes ({LOG_LINES_TO_SHOW} lines)")
         print(f"Terminal    : NO real-time output (quiet mode)")
-        print(f"Special Addr: {SPECIAL_ADDRESS_NO_OUTPUT} (no output when found)")
-        print(f"Dependencies: Auto-checked and installed (silent)")
         print(f"{'='*80}\n")
         
         threads = []
@@ -715,7 +710,6 @@ def main():
             threads.append(t)
             t.start()
             print(f"✅ Started worker thread for GPU {gpu}")
-            print(f"   Log file: {get_gpu_log_file(gpu)}")
         
         
         try:
