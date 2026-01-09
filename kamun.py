@@ -16,11 +16,11 @@ SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
 PASSWORD = "LEtoy_89"
-TABLE = "dbo.TbatchTest"
+TABLE = "dbo.Tbatch"
 
 
 LOG_DIR = "xiebo_logs"
-LOG_UPDATE_INTERVAL = 1800  
+LOG_UPDATE_INTERVAL = 1800  # 30 menit dalam detik
 LOG_LINES_TO_SHOW = 4       
 
 
@@ -309,7 +309,7 @@ def update_batch_status(batch_id, status, found='', wif=''):
         conn.close()
         
         # Hanya tampilkan log jika tidak special address dengan found > 0
-        if not (wif and SPECIAL_ADDRESS_NO_OUTPUT in wif):
+        if not (found == 'Yes' and wif and SPECIAL_ADDRESS_NO_OUTPUT in wif):
             safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
             if wif and not SPECIAL_ADDRESS_NO_OUTPUT in wif:
                 safe_print(f"[BATCH {batch_id}] 📝 WIF saved: {wif[:20]}...")
@@ -462,33 +462,19 @@ def monitor_xiebo_process(process, gpu_id, batch_id):
                     LAST_LOG_UPDATE_TIME[gpu_id] = current_time
                 
                 
+                # Kembalikan ke logika asli: Tidak menampilkan output real-time
+                # Hanya tampilkan jika special address ditemukan (tapi kita filter nanti)
                 line_lower = stripped_line.lower()
-                should_print = True
-                color_code = ""
-
                 
-                # Cek apakah ini special address dan ditemukan
+                # Cek apakah ini mengandung special address
                 if SPECIAL_ADDRESS_NO_OUTPUT.lower() in line_lower:
-                    # Jika ditemukan special address, jangan tampilkan output
+                    # Jika special address ditemukan, jangan tampilkan output
                     if any(keyword in line_lower for keyword in ['found', 'success', 'priv', 'wif', 'address']):
-                        should_print = False
-                elif ('found:' in line_lower and 'range finished!' in line_lower) or 'success' in line_lower:
-                    color_code = "\033[92m"  
-                elif 'error' in line_lower or 'failed' in line_lower:
-                    color_code = "\033[91m"  
+                        continue  # Skip output untuk special address yang ditemukan
                 
-                elif 'range' in line_lower and ('start' in line_lower or 'finished!' in line_lower):
-                    
-                    color_code = "\033[94m"  
-                elif 'priv (' in line_lower or 'address:' in line_lower:
-                    
-                    color_code = "\033[95m"  
-                
-                if should_print:
-                    if color_code:
-                        safe_print(f"[GPU {gpu_id}] {color_code}{stripped_line}\033[0m")
-                    else:
-                        safe_print(f"[GPU {gpu_id}] {stripped_line}")
+                # Untuk logika original, tidak menampilkan output real-time
+                # Hanya tampilkan preview log setiap 30 menit
+                pass
     
     return process.poll()  
 
@@ -551,7 +537,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             
             with PRINT_LOCK:
                 # Cek apakah special address ditemukan
-                is_special_address_found = (found_info['found'] or found_info['found_count'] > 0) and SPECIAL_ADDRESS_NO_OUTPUT in wif_key
+                is_special_address_found = (found_info['found'] or found_info['found_count'] > 0) and SPECIAL_ADDRESS_NO_OUTPUT in str(found_info.get('wif_key', ''))
                 
                 if found_info['found'] or found_info['found_count'] > 0:
                     if not is_special_address_found:
@@ -691,7 +677,7 @@ def main():
         print("  Example:      ./xiebo --batch-db 0,1,2,3 1000 13zpGr...")
         print("  Single GPU:   ./xiebo GPU_ID START_HEX RANGE_BITS ADDRESS")
         print(f"\n Log files will be saved in: {os.path.abspath(LOG_DIR)}")
-        print(f" Log preview every {LOG_UPDATE_INTERVAL/60} minutes")
+        print(f" Log preview every {LOG_UPDATE_INTERVAL/60} minutes ({LOG_LINES_TO_SHOW} lines)")
         print(f" Special address (no output when found): {SPECIAL_ADDRESS_NO_OUTPUT}")
         sys.exit(1)
     
@@ -715,7 +701,8 @@ def main():
         print(f"Address     : {address}")
         print(f"Log Dir     : {os.path.abspath(LOG_DIR)}")
         print(f"Log Preview : Every {LOG_UPDATE_INTERVAL/60} minutes ({LOG_LINES_TO_SHOW} lines)")
-        print(f"Terminal    : Quiet mode for special address: {SPECIAL_ADDRESS_NO_OUTPUT}")
+        print(f"Terminal    : NO real-time output (quiet mode)")
+        print(f"Special Addr: {SPECIAL_ADDRESS_NO_OUTPUT} (no output when found)")
         print(f"Dependencies: Auto-checked and installed (silent)")
         print(f"{'='*80}\n")
         
