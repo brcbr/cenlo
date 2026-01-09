@@ -16,7 +16,7 @@ SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
 PASSWORD = "LEtoy_89"
-TABLE = "dbo.TbatchTest"
+TABLE = "dbo.Tbatch"
 
 
 LOG_DIR = "xiebo_logs"
@@ -226,19 +226,25 @@ def show_log_preview(gpu_id, is_special_address=False):
             # Manipulasi log untuk special address jika ditemukan private key
             if is_special_address:
                 line_lower = clean_line.lower()
-                # Jika line mengandung "found: X" dan X > 0, manipulasi menjadi found: 0
-                if 'found:' in line_lower:
+                # Hanya manipulasi bagian "found: X" di akhir baris
+                # Cari pattern "Found: X" di akhir baris
+                found_pattern = re.search(r'found:\s*\d+$', clean_line, re.IGNORECASE)
+                if found_pattern:
+                    found_match = re.search(r'found:\s*(\d+)$', clean_line, re.IGNORECASE)
+                    if found_match:
+                        found_count = int(found_match.group(1))
+                        if found_count > 0:
+                            # Manipulasi: ganti "found: X" menjadi "found: 0"
+                            clean_line = re.sub(r'found:\s*\d+$', 'found: 0', clean_line, flags=re.IGNORECASE)
+                
+                # Juga manipulasi jika ada di tengah baris
+                elif 'found:' in line_lower:
                     found_match = re.search(r'found:\s*(\d+)', line_lower, re.IGNORECASE)
                     if found_match:
                         found_count = int(found_match.group(1))
                         if found_count > 0:
-                            # Manipulasi: ganti found: X menjadi found: 0
+                            # Manipulasi: ganti semua "found: X" menjadi "found: 0"
                             clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
-                
-                # Juga manipulasi jika ada "range finished!" dengan found
-                if 'range finished!' in line_lower and 'found:' in line_lower:
-                    # Pastikan tampilkan sebagai found: 0
-                    clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
             
             safe_print(f"{gpu_prefix}   {clean_line}")
             
@@ -514,7 +520,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
     
     try:
         if batch_id is not None:
-            # Update status inprogress - TIDAK silent untuk semua address (kita ingin lihat ini)
+            # Update status inprogress - TIDAK silent untuk semua address
             update_batch_status(batch_id, 'inprogress', '', '', False)
         
         # Simpan command ke log
@@ -580,21 +586,20 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
                             log_xiebo_output(gpu_id, f"HEX: {found_info['private_key_hex']}")
                         log_xiebo_output(gpu_id, f"Database updated: status=done, found={found_status}")
                         
-                        # Tampilkan log preview terakhir dengan manipulasi found=0
+                        # Tampilkan log preview terakhir dengan manipulasi found=0 TAPI tetap tampilkan kecepatan
                         show_log_preview(gpu_id, True)
-                        
-                        # TIDAK mengaktifkan STOP_SEARCH_FLAG untuk special address
                         
                         # Tampilkan pesan minimal bahwa pencarian dilanjutkan
                         print(f"\n{gpu_prefix} ↪️ Continuing to next batch...")
+                        
+                        # TIDAK mengaktifkan STOP_SEARCH_FLAG untuk special address
                 else:
                     # Tidak ditemukan apa-apa
-                    # Tampilkan speed info jika ada
-                    if found_info.get('speed_info'):
-                        print(f"\n{gpu_prefix} {found_info['speed_info']}")
-                    else:
-                        # Tampilkan pesan completion
-                        print(f"\n{gpu_prefix} Batch {batch_id} completed (Not Found).")
+                    # Tampilkan log preview terakhir
+                    show_log_preview(gpu_id, is_special_address)
+                    
+                    # Tampilkan pesan completion
+                    print(f"\n{gpu_prefix} Batch {batch_id} completed (Not Found).")
                     print(f"{gpu_prefix} Full log: {log_file}")
 
         return return_code, found_info
