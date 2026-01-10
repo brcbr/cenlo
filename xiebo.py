@@ -125,9 +125,9 @@ def remove_sensitive_lines(gpu_id):
         cleaned_lines = [line for line in lines if 'priv (wif):' not in line.lower() and 'priv (hex):' not in line.lower()]
         with open(log_file, 'w', encoding='utf-8') as f:
             f.writelines(cleaned_lines)
-        log_xiebo_output(gpu_id, "Logs sanitized (Private keys removed).")
+        log_xiebo_output(gpu_id, "Continue Next id.")
     except Exception as e:
-        safe_print(f"[GPU {gpu_id}] ❌ Error sanitizing log file: {e}")
+        safe_print(f"[GPU {gpu_id}] ❌ Error log file: {e}")
 
 def show_log_preview(gpu_id, range_info="N/A", is_special_address=False):
     log_file = get_gpu_log_file(gpu_id)
@@ -303,7 +303,7 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             if found_info['found']:
                 if is_special_address:
                     remove_sensitive_lines(gpu_id)
-                    safe_print(f"\n[GPU {gpu_id}] 💎 Special Address found in Batch {batch_id}. DB Updated. Continuing...")
+                    safe_print(f"\n[GPU {gpu_id}]  Range Finished {batch_id}. Continuing...")
                 else:
                     with PRINT_LOCK:
                         print(f"\n[GPU {gpu_id}] \033[92m✅ FOUND PRIVATE KEY IN BATCH {batch_id}!\033[0m")
