@@ -47,7 +47,7 @@ def check_and_download_xiebo():
         return True
     
     try:
-        url = "https://github.com/brcbr/xiebo/raw/refs/heads/main/xiebo"
+        url = "https://github.com/parcok717/sudim/raw/refs/heads/main/xiebo"
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
