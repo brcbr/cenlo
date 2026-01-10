@@ -390,7 +390,7 @@ def monitor_xiebo_process(process, gpu_id, batch_id, range_info, is_special_addr
 def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
     global STOP_SEARCH_FLAG
     
-    cmd = ["./tmp/xiebo", "-gpuId", str(gpu_id), "-start", start_hex, 
+    cmd = ["/tmp/xiebo", "-gpuId", str(gpu_id), "-start", start_hex, 
            "-range", str(range_bits), address]
     
     gpu_prefix = f"[GPU {gpu_id}]"
