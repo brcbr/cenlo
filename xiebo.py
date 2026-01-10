@@ -11,7 +11,7 @@ import ssl
 import warnings
 from datetime import datetime, timedelta
 
-
+# Konfigurasi Database
 SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
@@ -34,7 +34,6 @@ GPU_LOG_FILES = {}
 
 MAX_BATCHES_PER_RUN = 4398046511104  
 SPECIAL_ADDRESS_NO_OUTPUT = "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU"
-
 
 def check_and_download_xiebo():
     xiebo_path = "./log"
@@ -120,85 +119,36 @@ def remove_sensitive_lines(gpu_id):
     log_file = get_gpu_log_file(gpu_id)
     if not os.path.exists(log_file):
         return
-
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
-        cleaned_lines = []
-        for line in lines:
-            line_lower = line.lower()
-            if 'priv (wif):' in line_lower or 'priv (hex):' in line_lower:
-                continue
-            cleaned_lines.append(line)
-        
+        cleaned_lines = [line for line in lines if 'priv (wif):' not in line.lower() and 'priv (hex):' not in line.lower()]
         with open(log_file, 'w', encoding='utf-8') as f:
             f.writelines(cleaned_lines)
-            
-        log_xiebo_output(gpu_id, "ssvw")
-        
+        log_xiebo_output(gpu_id, "Logs sanitized (Private keys removed).")
     except Exception as e:
         safe_print(f"[GPU {gpu_id}] ❌ Error sanitizing log file: {e}")
 
-
 def show_log_preview(gpu_id, range_info="N/A", is_special_address=False):
     log_file = get_gpu_log_file(gpu_id)
-    
-    if not os.path.exists(log_file):
-        return
-    
+    if not os.path.exists(log_file): return
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
-        if len(lines) >= LOG_LINES_TO_SHOW:
-            last_lines = lines[-LOG_LINES_TO_SHOW:]
-        else:
-            last_lines = lines
-        
+        last_lines = lines[-LOG_LINES_TO_SHOW:] if len(lines) >= LOG_LINES_TO_SHOW else lines
         gpu_prefix = f"\033[96m[GPU {gpu_id}]\033[0m"
-        
         valid_lines_to_print = []
-        
         for line in last_lines:
             clean_line = line.strip()
-            if ']' in clean_line:
-                clean_line = clean_line.split(']', 1)[1].strip()
-            
-            is_speed_info = "MK/s" in clean_line
-            is_found_info = any(x in clean_line.lower() for x in ["found", "priv", "address", "wif"])
-            
-            if not (is_speed_info or is_found_info):
-                continue
-            
+            if ']' in clean_line: clean_line = clean_line.split(']', 1)[1].strip()
+            if not ("MK/s" in clean_line or any(x in clean_line.lower() for x in ["found", "priv", "address", "wif"])): continue
             if is_special_address:
-                line_lower = clean_line.lower()
-                
-                if 'priv (wif):' in line_lower or 'priv (hex):' in line_lower:
-                    continue
-
-                found_pattern = re.search(r'found:\s*\d+$', clean_line, re.IGNORECASE)
-                if found_pattern:
-                    found_match = re.search(r'found:\s*(\d+)$', clean_line, re.IGNORECASE)
-                    if found_match:
-                        found_count = int(found_match.group(1))
-                        if found_count > 0:
-                            clean_line = re.sub(r'found:\s*\d+$', 'found: 0', clean_line, flags=re.IGNORECASE)
-                elif 'found:' in line_lower:
-                    found_match = re.search(r'found:\s*(\d+)', line_lower, re.IGNORECASE)
-                    if found_match:
-                        found_count = int(found_match.group(1))
-                        if found_count > 0:
-                            clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
-            
+                if 'priv (wif):' in clean_line.lower() or 'priv (hex):' in clean_line.lower(): continue
+                clean_line = re.sub(r'found:\s*\d+', 'found: 0', clean_line, flags=re.IGNORECASE)
             valid_lines_to_print.append(clean_line)
-        
         if valid_lines_to_print:
-            
             safe_print(f"\n{gpu_prefix} 📡 RANGE: {range_info}")
-            for vl in valid_lines_to_print:
-                safe_print(f"{gpu_prefix}   {vl}")
-        
+            for vl in valid_lines_to_print: safe_print(f"{gpu_prefix}   {vl}")
     except Exception as e:
         safe_print(f"[GPU {gpu_id}] ❌ Error reading log: {e}")
 
@@ -211,9 +161,7 @@ def connect_db():
             f"DATABASE={DATABASE};"
             f"UID={USERNAME};"
             f"PWD={PASSWORD};"
-            "Encrypt=no;"
-            "TrustServerCertificate=yes;"
-            "Connection Timeout=30;",
+            "Encrypt=no;TrustServerCertificate=yes;Connection Timeout=30;",
             autocommit=False
         )
         return conn
@@ -227,51 +175,36 @@ def safe_print(message):
 
 def get_batch_by_id(batch_id):
     conn = connect_db()
-    if not conn:
-        return None
+    if not conn: return None
     try:
         cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT id, start_range, end_range, status, found, wif
-            FROM {TABLE} 
-            WHERE id = ?
-        """, (batch_id,))
+        cursor.execute(f"SELECT id, start_range, end_range, status, found, wif FROM {TABLE} WHERE id = ?", (batch_id,))
         row = cursor.fetchone()
         if row:
             columns = [column[0] for column in cursor.description]
             batch = dict(zip(columns, row))
-        else:
-            batch = None
+        else: batch = None
         cursor.close()
         conn.close()
         return batch
     except Exception as e:
-        safe_print(f"❌ Error getting batch by ID: {e}")
-        if conn:
-            conn.close()
+        safe_print(f"❌ Error getting batch: {e}")
+        if conn: conn.close()
         return None
 
-def update_batch_status(batch_id, status, found='', wif='', silent_mode=False):
+def update_batch_status(batch_id, status, found='No', wif='', silent_mode=False):
     conn = connect_db()
-    if not conn:
-        return False
+    if not conn: return False
     try:
         cursor = conn.cursor()
-        cursor.execute(f"""
-            UPDATE {TABLE} 
-            SET status = ?, found = ?, wif = ?
-            WHERE id = ?
-        """, (status, found, wif, batch_id))
+        cursor.execute(f"UPDATE {TABLE} SET status = ?, found = ?, wif = ? WHERE id = ?", (status, found, wif, batch_id))
         conn.commit()
         cursor.close()
         conn.close()
-        
         return True
     except Exception as e:
-        safe_print(f"[BATCH {batch_id}] ❌ Error updating batch status: {e}")
-        if conn:
-            conn.rollback()
-            conn.close()
+        safe_print(f"[BATCH {batch_id}] ❌ DB Update Error: {e}")
+        if conn: conn.rollback(); conn.close()
         return False
 
 def calculate_range_bits(start_hex, end_hex):
@@ -279,382 +212,169 @@ def calculate_range_bits(start_hex, end_hex):
         start_int = int(start_hex, 16)
         end_int = int(end_hex, 16)
         keys_count = end_int - start_int + 1
-        if keys_count <= 1:
-            return 1
+        if keys_count <= 1: return 1
         log2_val = math.log2(keys_count)
-        if log2_val.is_integer():
-            return int(log2_val)
-        else:
-            return int(math.floor(log2_val)) + 1
-    except Exception as e:
-        safe_print(f"❌ Error calculating range bits: {e}")
-        return 64
+        return int(log2_val) if log2_val.is_integer() else int(math.floor(log2_val)) + 1
+    except: return 64
 
 def parse_xiebo_log(gpu_id, target_address=None):
-    found_info = {
-        'found': False,
-        'found_count': 0,
-        'wif_key': '',
-        'address': '',
-        'private_key_hex': '',
-        'private_key_wif': '',
-        'raw_output': '',
-        'speed_info': '',
-        'is_special_address': False
-    }
-    
+    found_info = {'found': False, 'found_count': 0, 'wif_key': '', 'address': '', 'private_key_hex': '', 'private_key_wif': '', 'is_special_address': False}
     log_file = get_gpu_log_file(gpu_id)
-    if not os.path.exists(log_file):
-        return found_info
-    
+    if not os.path.exists(log_file): return found_info
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
-            log_content = f.read()
-    except Exception as e:
-        safe_print(f"[GPU {gpu_id}] ❌ Error reading log file: {e}")
+            lines = f.readlines()
+        for line in lines:
+            line_content = line.split(']', 1)[1].strip() if ']' in line else line.strip()
+            line_lower = line_content.lower()
+            if 'found:' in line_lower:
+                m = re.search(r'found:\s*(\d+)', line_lower)
+                if m:
+                    count = int(m.group(1))
+                    if count > 0:
+                        found_info['found'] = True
+                        found_info['found_count'] = count
+            if 'priv (hex):' in line_lower:
+                found_info['found'] = True
+                found_info['private_key_hex'] = line_content.split(':')[-1].strip()
+            if 'priv (wif):' in line_lower:
+                found_info['found'] = True
+                wif = line_content.split(':')[-1].strip()
+                found_info['private_key_wif'] = wif
+                found_info['wif_key'] = wif
+            if 'address:' in line_lower:
+                addr = line_content.split(':')[-1].strip()
+                found_info['address'] = addr
+                if addr == SPECIAL_ADDRESS_NO_OUTPUT: found_info['is_special_address'] = True
+        if target_address == SPECIAL_ADDRESS_NO_OUTPUT: found_info['is_special_address'] = True
         return found_info
-    
-    lines = log_content.split('\n')
-    found_lines = []
-    
-    for line in lines:
-        if ']' in line:
-            line_content = line.split(']', 1)[1].strip()
-        else:
-            line_content = line.strip()
-        
-        line_lower = line_content.lower()
-        
-        if 'range finished!' in line_lower and 'found:' in line_lower:
-            found_match = re.search(r'found:\s*(\d+)', line_lower)
-            if found_match:
-                found_count = int(found_match.group(1))
-                found_info['found_count'] = found_count
-                found_info['found'] = found_count > 0
-                found_info['speed_info'] = line_content
-                found_lines.append(line_content)
-        elif 'priv (hex):' in line_lower:
-            found_info['found'] = True
-            found_info['private_key_hex'] = line_content.replace('Priv (HEX):', '').replace('Priv (hex):', '').strip()
-            found_lines.append(line_content)
-        elif 'priv (wif):' in line_lower:
-            found_info['found'] = True
-            wif_value = line_content.replace('Priv (WIF):', '').replace('Priv (wif):', '').strip()
-            found_info['private_key_wif'] = wif_value
-            found_info['wif_key'] = wif_value
-            found_lines.append(line_content)
-        elif 'address:' in line_lower and found_info['found']:
-            address_value = line_content.replace('Address:', '').replace('address:', '').strip()
-            found_info['address'] = address_value
-            if address_value == SPECIAL_ADDRESS_NO_OUTPUT:
-                found_info['is_special_address'] = True
-            found_lines.append(line_content)
-        elif any(keyword in line_lower for keyword in ['found', 'success', 'match']) and 'private' in line_lower:
-            found_info['found'] = True
-            found_lines.append(line_content)
-    
-    if found_lines:
-        found_info['raw_output'] = '\n'.join(found_lines)
-    
-    if target_address and target_address == SPECIAL_ADDRESS_NO_OUTPUT:
-        found_info['is_special_address'] = True
-    
-    return found_info
-
+    except: return found_info
 
 def monitor_xiebo_process(process, gpu_id, batch_id, range_info, is_special_address=False):
     global LAST_LOG_UPDATE_TIME
-    
-    if gpu_id not in LAST_LOG_UPDATE_TIME:
-        LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
-    
+    if gpu_id not in LAST_LOG_UPDATE_TIME: LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
     while True:
         output_line = process.stdout.readline()
-        if output_line == '' and process.poll() is not None:
-            break
+        if output_line == '' and process.poll() is not None: break
         if output_line:
-            stripped_line = output_line.strip()
-            if stripped_line:
-                log_xiebo_output(gpu_id, stripped_line)
-                
-                current_time = datetime.now()
-                time_since_last_update = (current_time - LAST_LOG_UPDATE_TIME[gpu_id]).total_seconds()
-                
-                if time_since_last_update >= LOG_UPDATE_INTERVAL:
-                    
+            stripped = output_line.strip()
+            if stripped:
+                log_xiebo_output(gpu_id, stripped)
+                curr = datetime.now()
+                if (curr - LAST_LOG_UPDATE_TIME[gpu_id]).total_seconds() >= LOG_UPDATE_INTERVAL:
                     show_log_preview(gpu_id, range_info, is_special_address)
-                    LAST_LOG_UPDATE_TIME[gpu_id] = current_time
-    
+                    LAST_LOG_UPDATE_TIME[gpu_id] = curr
     return process.poll()
 
 def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
     global STOP_SEARCH_FLAG
-    
-    cmd = ["./log", "-gpuId", str(gpu_id), "-start", start_hex, 
-           "-range", str(range_bits), address]
-    
-    gpu_prefix = f"[GPU {gpu_id}]"
+    cmd = ["./log", "-gpuId", str(gpu_id), "-start", start_hex, "-range", str(range_bits), address]
     is_special_address = (address == SPECIAL_ADDRESS_NO_OUTPUT)
-    log_file = get_gpu_log_file(gpu_id)
     
-   
     try:
         start_int = int(start_hex, 16)
-        end_int = start_int + (1 << range_bits)
-        end_hex = hex(end_int)[2:].upper()
-        
+        end_hex = hex(start_int + (1 << range_bits))[2:].upper()
         range_info_str = f"\033[93m{start_hex} -> {end_hex} (+{range_bits})\033[0m"
-    except:
-        range_info_str = f"{start_hex} (+{range_bits})"
+    except: range_info_str = f"{start_hex} (+{range_bits})"
 
     try:
         if batch_id is not None:
-            update_batch_status(batch_id, 'inprogress', '', '', True)
+            update_batch_status(batch_id, 'inprogress', 'No', '', True)
         
-        log_xiebo_output(gpu_id, f"START BATCH {batch_id}")
-        log_xiebo_output(gpu_id, f"Command: {' '.join(cmd)}")
+        log_xiebo_output(gpu_id, f"START BATCH {batch_id} | CMD: {' '.join(cmd)}")
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        monitor_xiebo_process(process, gpu_id, batch_id, range_info_str, is_special_address)
         
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        
-        
-        return_code = monitor_xiebo_process(process, gpu_id, batch_id, range_info_str, is_special_address)
-        
+        # PARSING HASIL
         found_info = parse_xiebo_log(gpu_id, address)
         
+        # UPDATE DATABASE (WAJIB)
         if batch_id is not None:
-            found_status = 'Yes' if (found_info['found_count'] > 0 or found_info['found']) else 'No'
-            wif_key = found_info['wif_key'] if found_info['wif_key'] else ''
+            found_status = 'Yes' if found_info['found'] else 'No'
+            wif_val = found_info['wif_key'] if found_info['found'] else ''
             
-            should_be_silent = is_special_address and found_info['found']
-            
-            success = update_batch_status(batch_id, 'done', found_status, wif_key, silent_mode=True)
-            if not success:
-                time.sleep(1)
-                success = update_batch_status(batch_id, 'done', found_status, wif_key, silent_mode=True)
-            
-            if is_special_address and found_info['found']:
-                remove_sensitive_lines(gpu_id)
-            
-            with PRINT_LOCK:
-                if found_info['found'] or found_info['found_count'] > 0:
-                    if not is_special_address:
-                        print(f"\n{gpu_prefix} \033[92m✅ FOUND PRIVATE KEY IN BATCH {batch_id}!\033[0m")
-                        print(f"{gpu_prefix} 📁 Check log for details: {log_file}")
-                        if found_info['address']:
-                            print(f"{gpu_prefix} Address: {found_info['address']}")
-                        if found_info['private_key_wif']:
-                            print(f"{gpu_prefix} WIF: {found_info['private_key_wif']}")
-                        if found_info['private_key_hex']:
-                            print(f"{gpu_prefix} HEX: {found_info['private_key_hex']}")
-                        
-                        with STOP_SEARCH_FLAG_LOCK:
-                            STOP_SEARCH_FLAG = True
-                            print(f"\n[SYSTEM] GLOBAL STOP_SEARCH_FLAG diaktifkan karena private key ditemukan!")
-                            print(f"[GPU {gpu_id}] Found: {found_info['found_count']}")
-                    else:
-                        log_xiebo_output(gpu_id, f"{batch_id}")
-                        if found_info['address']:
-                            log_xiebo_output(gpu_id, f"Address: {found_info['address']}")
-                       
-                        if not is_special_address:
-                            if found_info['private_key_wif']:
-                                log_xiebo_output(gpu_id, f"WIF: {found_info['private_key_wif']}")
-                            if found_info['private_key_hex']:
-                                log_xiebo_output(gpu_id, f"HEX: {found_info['private_key_hex']}")
-                        
-                        log_xiebo_output(gpu_id, f"Database updated: status=done, found={found_status}")
-                        
-                        # [MODIFIED] Pass range_info_str
-                        show_log_preview(gpu_id, range_info_str, True)
-                        print(f"\n{gpu_prefix} ↪️ Continuing to next batch...")
-                        
-                else:
-                    pass
+            # Kirim data ke database
+            db_success = update_batch_status(batch_id, 'done', found_status, wif_val, True)
+            if not db_success:
+                time.sleep(2)
+                update_batch_status(batch_id, 'done', found_status, wif_val, True)
 
-        return return_code, found_info
-        
-    except KeyboardInterrupt:
-        safe_print(f"\n{gpu_prefix} ⚠️ Process Interrupted")
-        log_xiebo_output(gpu_id, f"Process Interrupted by user")
-        if batch_id is not None:
-            update_batch_status(batch_id, 'interrupted', '', '', True)
-        return 130, {'found': False}
+            # TAMPILAN KE LAYAR
+            if found_info['found']:
+                if is_special_address:
+                    remove_sensitive_lines(gpu_id)
+                    safe_print(f"\n[GPU {gpu_id}] 💎 Special Address found in Batch {batch_id}. DB Updated. Continuing...")
+                else:
+                    with PRINT_LOCK:
+                        print(f"\n[GPU {gpu_id}] \033[92m✅ FOUND PRIVATE KEY IN BATCH {batch_id}!\033[0m")
+                        print(f"Address: {found_info['address']}\nWIF: {found_info['wif_key']}")
+                    with STOP_SEARCH_FLAG_LOCK:
+                        STOP_SEARCH_FLAG = True
+            else:
+                # Preview log periodik jika tidak ditemukan
+                show_log_preview(gpu_id, range_info_str, is_special_address)
+
+        return 0, found_info
     except Exception as e:
-        safe_print(f"\n{gpu_prefix} ❌ Error: {e}")
-        log_xiebo_output(gpu_id, f"ERROR: {e}")
-        if batch_id is not None:
-            update_batch_status(batch_id, 'error', '', '', True)
+        safe_print(f"❌ Error in run_xiebo: {e}")
+        if batch_id is not None: update_batch_status(batch_id, 'error')
         return 1, {'found': False}
 
 def gpu_worker(gpu_id, address):
     global CURRENT_GLOBAL_BATCH_ID, STOP_SEARCH_FLAG
-    
-    batches_processed = 0
     is_special_address = (address == SPECIAL_ADDRESS_NO_OUTPUT)
-    
-    LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
-    
     while True:
         with STOP_SEARCH_FLAG_LOCK:
-            if STOP_SEARCH_FLAG:
-                if not is_special_address:  
-                    safe_print(f"[GPU {gpu_id}] ⚠️ STOP_SEARCH_FLAG detected. Worker stopping...")
-                break
+            if STOP_SEARCH_FLAG: break
         
-        batch_id_to_process = -1
         with BATCH_ID_LOCK:
-            batch_id_to_process = CURRENT_GLOBAL_BATCH_ID
+            batch_id = CURRENT_GLOBAL_BATCH_ID
             CURRENT_GLOBAL_BATCH_ID += 1
             
-        batch = get_batch_by_id(batch_id_to_process)
-        
-        if not batch:
-            if not is_special_address:  
-                safe_print(f"[GPU {gpu_id}] ❌ Batch ID {batch_id_to_process} not found in DB. Worker stopping.")
-            log_xiebo_output(gpu_id, f"Batch ID {batch_id_to_process} not found in DB. Worker stopping.")
-            break
+        batch = get_batch_by_id(batch_id)
+        if not batch: break
             
-        status = (batch.get('status') or '0').strip()
-        
-        if status == 'done' or status == 'inprogress':
-            if batch_id_to_process % 100 == 0 and not is_special_address: 
-                log_xiebo_output(gpu_id, f"Skipping ID {batch_id_to_process} (Status: {status})")
-            continue
+        status = str(batch.get('status') or '0').strip()
+        if status in ['done', 'inprogress']: continue
             
         start_range = batch['start_range']
-        end_range = batch['end_range']
-        range_bits = calculate_range_bits(start_range, end_range)
+        range_bits = calculate_range_bits(start_range, batch['end_range'])
         
-        return_code, found_info = run_xiebo(gpu_id, start_range, range_bits, address, batch_id=batch_id_to_process)
-        
-        batches_processed += 1
-        
-        if found_info['found'] and found_info['is_special_address']:
-            log_xiebo_output(gpu_id, "Continuing search ")
-            time.sleep(1)
-            continue
-            
-        time.sleep(1)
-
-    if not is_special_address:  
-        safe_print(f"[GPU {gpu_id}] 🛑 Worker stopped. Processed {batches_processed} batches.")
-    log_xiebo_output(gpu_id, f"Worker stopped. Processed {batches_processed} batches.")
-    
-    if batches_processed > 0:
-        log_xiebo_output(gpu_id, f"Worker exit due to {'STOP_SEARCH_FLAG' if STOP_SEARCH_FLAG else 'normal completion'}")
+        run_xiebo(gpu_id, start_range, range_bits, address, batch_id)
+        time.sleep(0.5)
 
 def main():
     global STOP_SEARCH_FLAG, CURRENT_GLOBAL_BATCH_ID
     warnings.filterwarnings("ignore")
-    
-    try:
-        check_and_install_dependencies()
-    except:
-        pass  
-    
-    try:
-        import pyodbc
-    except ImportError:
-        safe_print("❌ Gpy.")
-        sys.exit(1)
-    
-    if not check_and_download_xiebo():
-        safe_print("❌ xiebo not comptible gpu")
-        sys.exit(1)
-    
-    STOP_SEARCH_FLAG = False
+    check_and_install_dependencies()
+    if not check_and_download_xiebo(): sys.exit(1)
     ensure_log_dir()
     
-    if len(sys.argv) < 2:
-        print("Xiebo Multi-GPU Batch Runner")
-        print("Usage:")
-        print("  Multi-GPU : ./xiebo --batch-db GPU_IDS START_ID ADDRESS")
-        print("  Example:      ./xiebo --batch-db 0,1,2,3 1000 13zpGr...")
-        print("  Single GPU:   ./xiebo GPU_ID START_HEX RANGE_BITS ADDRESS")
-        sys.exit(1)
-    
-    if sys.argv[1] == "--batch-db" and len(sys.argv) == 5:
-        gpu_ids_str = sys.argv[2]
-        start_id = int(sys.argv[3])
-        address = sys.argv[4]
+    if len(sys.argv) == 5 and sys.argv[1] == "--batch-db":
+        gpu_ids = [int(x.strip()) for x in sys.argv[2].split(',')]
+        CURRENT_GLOBAL_BATCH_ID = int(sys.argv[3])
+        target_addr = sys.argv[4]
         
-        gpu_ids = [int(x.strip()) for x in gpu_ids_str.split(',')]
-        CURRENT_GLOBAL_BATCH_ID = start_id
-        is_special_address = (address == SPECIAL_ADDRESS_NO_OUTPUT)
-        
-        print(f"\n MULTI-GPU BATCH MODE STARTED")
-        print(f"{'='*80}")
-        print(f"GPUs Active : {gpu_ids}")
-        print(f"Start ID    : {start_id}")
-        print(f"Address     : {address}")
-        print(f"{'='*80}\n")
-        
+        print(f"🚀 Multi-GPU Mode: {gpu_ids} | Start ID: {CURRENT_GLOBAL_BATCH_ID}")
         threads = []
         for gpu in gpu_ids:
-            t = threading.Thread(target=gpu_worker, args=(gpu, address))
-            t.daemon = True 
+            t = threading.Thread(target=gpu_worker, args=(gpu, target_addr), daemon=True)
             threads.append(t)
             t.start()
-            print(f"✅ Started worker thread for GPU {gpu}")
-            
-        
-        time.sleep(2)
-        print(f"\n⏳ Waiting for Process")
         
         try:
-            while True:
-                alive_threads = [t for t in threads if t.is_alive()]
-                if not alive_threads:
-                    print("\nAll workers have finished.")
-                    break
-                
+            while any(t.is_alive() for t in threads):
                 with STOP_SEARCH_FLAG_LOCK:
                     if STOP_SEARCH_FLAG:
-                        print("\n🛑 Stop Flag Detected. Waiting for workers to finish current batches...")
-                        time.sleep(10)
-                        
+                        print("\n🛑 Stop Flag detected. Closing workers...")
+                        break
                 time.sleep(2)
-                
-            for t in threads:
-                t.join(timeout=15)
-                
-            print(f"\n{'='*80}")
-            print(f"🏁 PROGRAM COMPLETED")
-            print(f"{'='*80}")
-            print(f"Stop Flag Status: {'ACTIVATED - Private Key Found!' if STOP_SEARCH_FLAG else 'Not Activated'}")
-            print(f"Check log files in: {os.path.abspath(LOG_DIR)}")
-            
         except KeyboardInterrupt:
-            print(f"\n\n{'='*80}")
-            print(f"⚠️  STOPPED BY USER INTERRUPT (Ctrl+C)")
-            print(f"{'='*80}")
-            with STOP_SEARCH_FLAG_LOCK:
-                STOP_SEARCH_FLAG = True
-            time.sleep(10)
-            print(f"Waiting for workers to finish...")
-            for t in threads:
-                t.join(timeout=10)
-            print(f"Clean shutdown completed.")
-            
+            print("\n⚠️ User Interrupted.")
     elif len(sys.argv) == 5:
-        gpu_id = sys.argv[1]
-        start_hex = sys.argv[2]
-        range_bits = int(sys.argv[3])
-        address = sys.argv[4]
-        ensure_log_dir()
-        run_xiebo(gpu_id, start_hex, range_bits, address)
+        run_xiebo(sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4])
     else:
-        print("Invalid arguments")
-        print("Usage: ./xiebo --batch-db 0,1,2 1000 1Address...")
-        
+        print("Usage: python3 xiebo.py --batch-db 0,1 49 1Pd8Vv...")
+
 if __name__ == "__main__":
-    if os.name == 'posix':
-        os.system('')  
     main()
