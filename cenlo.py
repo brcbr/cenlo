@@ -16,7 +16,7 @@ SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
 PASSWORD = "LEtoy_89"
-TABLE = "dbo.TbatchTest"
+TABLE = "dbo.Tbatch"
 
 LOG_DIR = "xiebo_logs"
 LOG_UPDATE_INTERVAL = 60  
@@ -33,7 +33,7 @@ LAST_LOG_UPDATE_TIME = {}
 GPU_LOG_FILES = {}
 
 MAX_BATCHES_PER_RUN = 4398046511104  
-SPECIAL_ADDRESS_NO_OUTPUT = "1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z"
+SPECIAL_ADDRESS_NO_OUTPUT = "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU"
 
 def check_and_download_xiebo():
     xiebo_path = "./log"
