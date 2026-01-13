@@ -159,20 +159,34 @@ def update_batch_status(batch_id, status, found='', wif=''):
     try:
         cursor = conn.cursor()
         
-        # Update status batch
-        cursor.execute(f"""
-            UPDATE {TABLE} 
-            SET status = ?, found = ?, wif = ?
-            WHERE id = ?
-        """, (status, found, wif, batch_id))
-        
+        # LOGIC UPDATE DIPERBARUI DI SINI
+        if status == 'inprogress':
+            # Jika status inprogress, update status dan start_tm
+            current_tm = datetime.now()
+            cursor.execute(f"""
+                UPDATE {TABLE} 
+                SET status = ?, start_tm = ?
+                WHERE id = ?
+            """, (status, current_tm, batch_id))
+            
+            safe_print(f"[BATCH {batch_id}] ⏱️ Status updated to: {status} (Start Time Saved)")
+            
+        else:
+            # Jika status lain (done/error/interrupted), update status, found, dan wif
+            # start_tm TIDAK diubah agar record waktu mulai tetap ada
+            cursor.execute(f"""
+                UPDATE {TABLE} 
+                SET status = ?, found = ?, wif = ?
+                WHERE id = ?
+            """, (status, found, wif, batch_id))
+            
+            safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
+            if wif:
+                safe_print(f"[BATCH {batch_id}] 📝 WIF saved: {wif[:20]}...")
+
         conn.commit()
         cursor.close()
         conn.close()
-        
-        safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
-        if wif:
-            safe_print(f"[BATCH {batch_id}] 📝 WIF saved: {wif[:20]}...")
         return True
         
     except Exception as e:
@@ -372,6 +386,7 @@ def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
     
     try:
         if batch_id is not None:
+            # Ini akan mentrigger update start_tm karena statusnya 'inprogress'
             update_batch_status(batch_id, 'inprogress')
         
         # Simpan command ke log
