@@ -37,7 +37,7 @@ GPU_LOG_FILES = {}
 SPEED_LINE_COUNTER = {}
 
 # Konfigurasi batch
-MAX_BATCHES_PER_RUN = 4000000000000  # Maksimal batch per eksekusi
+MAX_BATCHES_PER_RUN = 4398046511104  # Maksimal batch per eksekusi
 
 def ensure_log_dir():
     """Membuat directory log jika belum ada"""
