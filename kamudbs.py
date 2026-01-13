@@ -16,7 +16,7 @@ PASSWORD = "LEtoy_89"
 TABLE = "dbo.Tbatch"
 
 # Konfigurasi logging
-LOG_DIR = "xiebo_logs"
+LOG_DIR = "log_logs"
 LOG_UPDATE_INTERVAL = 1800  # 30 menit dalam detik
 LOG_LINES_TO_SHOW = 4       # Jumlah baris yang ditampilkan setiap interval
 
@@ -52,8 +52,8 @@ def get_gpu_log_file(gpu_id):
         GPU_LOG_FILES[gpu_id] = log_file
     return GPU_LOG_FILES[gpu_id]
 
-def log_xiebo_output(gpu_id, message):
-    """Menyimpan output xiebo ke file log"""
+def log_log_output(gpu_id, message):
+    """Menyimpan output log ke file log"""
     log_file = get_gpu_log_file(gpu_id)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -206,8 +206,8 @@ def calculate_range_bits(start_hex, end_hex):
         safe_print(f"❌ Error calculating range bits: {e}")
         return 64  # Default value
 
-def parse_xiebo_log(gpu_id):
-    """Parse output dari file log xiebo untuk mencari private key yang ditemukan"""
+def parse_log_log(gpu_id):
+    """Parse output dari file log log untuk mencari private key yang ditemukan"""
     found_info = {
         'found': False,
         'found_count': 0,
@@ -290,8 +290,8 @@ def parse_xiebo_log(gpu_id):
     
     return found_info
 
-def monitor_xiebo_process(process, gpu_id, batch_id):
-    """Memantau proses xiebo dan menyimpan output ke log file"""
+def monitor_log_process(process, gpu_id, batch_id):
+    """Memantau proses log dan menyimpan output ke log file"""
     global LAST_LOG_UPDATE_TIME, SPEED_LINE_COUNTER
     
     # Inisialisasi waktu update log untuk GPU ini
@@ -310,7 +310,7 @@ def monitor_xiebo_process(process, gpu_id, batch_id):
             stripped_line = output_line.strip()
             if stripped_line:
                 # Selalu simpan ke log file
-                log_xiebo_output(gpu_id, stripped_line)
+                log_log_output(gpu_id, stripped_line)
                 
                 # Cek apakah sudah waktunya menampilkan preview log
                 current_time = datetime.now()
@@ -350,11 +350,11 @@ def monitor_xiebo_process(process, gpu_id, batch_id):
     
     return process.poll()  # Return exit code
 
-def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
-    """Run xiebo binary langsung"""
+def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
+    """Run log binary langsung"""
     global STOP_SEARCH_FLAG
     
-    cmd = ["./xiebo", "-gpuId", str(gpu_id), "-start", start_hex, 
+    cmd = ["./log", "-gpuId", str(gpu_id), "-start", start_hex, 
            "-range", str(range_bits), address]
     
     gpu_prefix = f"[GPU {gpu_id}]"
@@ -375,8 +375,8 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
             update_batch_status(batch_id, 'inprogress')
         
         # Simpan command ke log
-        log_xiebo_output(gpu_id, f"START BATCH {batch_id}")
-        log_xiebo_output(gpu_id, f"Command: {' '.join(cmd)}")
+        log_log_output(gpu_id, f"START BATCH {batch_id}")
+        log_log_output(gpu_id, f"Command: {' '.join(cmd)}")
         
         process = subprocess.Popen(
             cmd,
@@ -388,10 +388,10 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         )
         
         # Monitor process dan simpan output ke log
-        return_code = monitor_xiebo_process(process, gpu_id, batch_id)
+        return_code = monitor_log_process(process, gpu_id, batch_id)
         
         # Parse output dari log file
-        found_info = parse_xiebo_log(gpu_id)
+        found_info = parse_log_log(gpu_id)
         
         # UPDATE DATABASE SETELAH MENDAPATKAN FOUND_INFO
         if batch_id is not None:
@@ -434,13 +434,13 @@ def run_xiebo(gpu_id, start_hex, range_bits, address, batch_id=None):
         
     except KeyboardInterrupt:
         safe_print(f"\n{gpu_prefix} ⚠️ Process Interrupted")
-        log_xiebo_output(gpu_id, f"Process Interrupted by user")
+        log_log_output(gpu_id, f"Process Interrupted by user")
         if batch_id is not None:
             update_batch_status(batch_id, 'interrupted')
         return 130, {'found': False}
     except Exception as e:
         safe_print(f"\n{gpu_prefix} ❌ Error: {e}")
-        log_xiebo_output(gpu_id, f"ERROR: {e}")
+        log_log_output(gpu_id, f"ERROR: {e}")
         if batch_id is not None:
             update_batch_status(batch_id, 'error')
         return 1, {'found': False}
@@ -472,7 +472,7 @@ def gpu_worker(gpu_id, address):
         
         if not batch:
             safe_print(f"[GPU {gpu_id}] ❌ Batch ID {batch_id_to_process} not found in DB. Worker stopping.")
-            log_xiebo_output(gpu_id, f"Batch ID {batch_id_to_process} not found in DB. Worker stopping.")
+            log_log_output(gpu_id, f"Batch ID {batch_id_to_process} not found in DB. Worker stopping.")
             break
             
         status = (batch.get('status') or '0').strip()
@@ -481,15 +481,15 @@ def gpu_worker(gpu_id, address):
         if status == 'done' or status == 'inprogress':
             # Jangan print skip terlalu banyak agar log bersih
             if batch_id_to_process % 100 == 0: 
-                log_xiebo_output(gpu_id, f"Skipping ID {batch_id_to_process} (Status: {status})")
+                log_log_output(gpu_id, f"Skipping ID {batch_id_to_process} (Status: {status})")
             continue
             
         start_range = batch['start_range']
         end_range = batch['end_range']
         range_bits = calculate_range_bits(start_range, end_range)
         
-        # 3. Jalankan Xiebo (FUNGSI INI AKAN SELESAIKAN SEMUA PROSES TERMASUK UPDATE DATABASE)
-        return_code, found_info = run_xiebo(gpu_id, start_range, range_bits, address, batch_id=batch_id_to_process)
+        # 3. Jalankan log (FUNGSI INI AKAN SELESAIKAN SEMUA PROSES TERMASUK UPDATE DATABASE)
+        return_code, found_info = run_log(gpu_id, start_range, range_bits, address, batch_id=batch_id_to_process)
         
         batches_processed += 1
             
@@ -497,11 +497,11 @@ def gpu_worker(gpu_id, address):
         time.sleep(1)
 
     safe_print(f"[GPU {gpu_id}] 🛑 Worker stopped. Processed {batches_processed} batches.")
-    log_xiebo_output(gpu_id, f"Worker stopped. Processed {batches_processed} batches.")
+    log_log_output(gpu_id, f"Worker stopped. Processed {batches_processed} batches.")
     
     # LAPORKAN KE DATABASE TERAKHIR JIKA PERLU
     if batches_processed > 0:
-        log_xiebo_output(gpu_id, f"Worker exit due to {'STOP_SEARCH_FLAG' if STOP_SEARCH_FLAG else 'normal completion'}")
+        log_log_output(gpu_id, f"Worker exit due to {'STOP_SEARCH_FLAG' if STOP_SEARCH_FLAG else 'normal completion'}")
 
 def main():
     global STOP_SEARCH_FLAG, CURRENT_GLOBAL_BATCH_ID
@@ -512,7 +512,7 @@ def main():
     ensure_log_dir()
     
     if len(sys.argv) < 2:
-        print("Xiebo Multi-GPU Batch Runner")
+        print("Multi-GPU Batch Runner")
         print("Usage:")
         print("  Multi-GPU DB: python3 bm.py --batch-db GPU_IDS START_ID ADDRESS")
         print("  Example:      python3 bm.py --batch-db 0,1,2,3 1000 13zpGr...")
@@ -535,7 +535,7 @@ def main():
         CURRENT_GLOBAL_BATCH_ID = start_id
         
         print(f"\n{'='*80}")
-        print(f"🚀 MULTI-GPU BATCH MODE STARTED")
+        print(f"MULTI-GPU BATCH MODE STARTED")
         print(f"{'='*80}")
         print(f"GPUs Active : {gpu_ids}")
         print(f"Start ID    : {start_id}")
@@ -612,19 +612,19 @@ def main():
         # Pastikan directory log ada
         ensure_log_dir()
         
-        run_xiebo(gpu_id, start_hex, range_bits, address)
+        run_log(gpu_id, start_hex, range_bits, address)
         
     else:
         print("Invalid arguments")
-        print("Usage: python3 bm.py --batch-db 0,1,2 1000 1Address...")
+        print("Usage: python3 kamudbs.py --batch-db 0,1,2 1000 1Address...")
         
 if __name__ == "__main__":
-    if not os.path.exists("./xiebo"):
-        print("❌ Error: xiebo binary not found")
+    if not os.path.exists("./log"):
+        print("❌ Error: log binary not found")
         sys.exit(1)
         
-    if not os.access("./xiebo", os.X_OK):
-        os.chmod("./xiebo", 0o755)
+    if not os.access("./log", os.X_OK):
+        os.chmod("./log", 0o755)
         
     if os.name == 'posix':
         os.system('')
