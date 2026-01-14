@@ -8,23 +8,28 @@ import pyodbc
 import threading
 from datetime import datetime, timedelta
 
-# Konfigurasi database SQL Server
+# =============================================
+# KONFIGURASI DATABASE
+# =============================================
 SERVER = "bdbd-61694.portmap.host,61694"
 DATABASE = "puxi"
 USERNAME = "sa"
 PASSWORD = "LEtoy_89"
 TABLE = "dbo.Tbatch"
 
-# Konfigurasi logging
+# =============================================
+# KONFIGURASI LOGGING
+# =============================================
 LOG_DIR = "log_logs"
 LOG_UPDATE_INTERVAL = 1800  # 30 menit dalam detik
 LOG_LINES_TO_SHOW = 4       # Jumlah baris yang ditampilkan setiap interval
 
-# Global flag untuk menghentikan pencarian
+# =============================================
+# GLOBAL VARIABLES & FLAGS
+# =============================================
 STOP_SEARCH_FLAG = False
 STOP_SEARCH_FLAG_LOCK = threading.Lock()
 
-# Global variables untuk Threading synchronization
 PRINT_LOCK = threading.Lock()
 BATCH_ID_LOCK = threading.Lock()
 CURRENT_GLOBAL_BATCH_ID = 0
@@ -33,12 +38,15 @@ CURRENT_GLOBAL_BATCH_ID = 0
 LAST_LOG_UPDATE_TIME = {}
 # Dictionary untuk menyimpan path log file per GPU
 GPU_LOG_FILES = {}
-# Dictionary untuk menyimpan line counter untuk mengurangi frekuensi tampilan speed
+# Dictionary untuk menyimpan line counter
 SPEED_LINE_COUNTER = {}
 
 # Konfigurasi batch
-MAX_BATCHES_PER_RUN = 4398046511104  # Maksimal batch per eksekusi
+MAX_BATCHES_PER_RUN = 4398046511104 
 
+# =============================================
+# UTILITY FUNCTIONS
+# =============================================
 def ensure_log_dir():
     """Membuat directory log jika belum ada"""
     if not os.path.exists(LOG_DIR):
@@ -59,6 +67,11 @@ def log_log_output(gpu_id, message):
     
     with open(log_file, 'a', encoding='utf-8') as f:
         f.write(f"[{timestamp}] {message}\n")
+
+def safe_print(message):
+    """Mencetak pesan ke layar dengan thread lock agar tidak tumpang tindih"""
+    with PRINT_LOCK:
+        print(message)
 
 def show_log_preview(gpu_id):
     """Menampilkan preview log (4 baris terakhir) setiap interval"""
@@ -91,6 +104,9 @@ def show_log_preview(gpu_id):
     except Exception as e:
         safe_print(f"[GPU {gpu_id}] ❌ Error reading log: {e}")
 
+# =============================================
+# DATABASE FUNCTIONS
+# =============================================
 def connect_db():
     """Membuat koneksi ke database SQL Server"""
     try:
@@ -109,11 +125,6 @@ def connect_db():
     except Exception as e:
         safe_print(f"❌ Database connection error: {e}")
         return None
-
-def safe_print(message):
-    """Mencetak pesan ke layar dengan thread lock agar tidak tumpang tindih"""
-    with PRINT_LOCK:
-        print(message)
 
 def get_batch_by_id(batch_id):
     """Mengambil data batch berdasarkan ID"""
@@ -151,7 +162,7 @@ def get_batch_by_id(batch_id):
         return None
 
 def update_batch_status(batch_id, status, found='', wif=''):
-    """Update status batch di database"""
+    """Update status batch di database dan set start_tm"""
     conn = connect_db()
     if not conn:
         return False
@@ -159,56 +170,48 @@ def update_batch_status(batch_id, status, found='', wif=''):
     try:
         cursor = conn.cursor()
         
-        # LOGIC UPDATE DIPERBARUI DI SINI
-        if status == 'inprogress':
-            # Jika status inprogress, update status dan start_tm
-            current_tm = datetime.now()
-            cursor.execute(f"""
-                UPDATE {TABLE} 
-                SET status = ?, start_tm = ?
-                WHERE id = ?
-            """, (status, current_tm, batch_id))
-            
-            safe_print(f"[BATCH {batch_id}] ⏱️ Status updated to: {status} (Start Time Saved)")
-            
-        else:
-            # Jika status lain (done/error/interrupted), update status, found, dan wif
-            # start_tm TIDAK diubah agar record waktu mulai tetap ada
-            cursor.execute(f"""
-                UPDATE {TABLE} 
-                SET status = ?, found = ?, wif = ?
-                WHERE id = ?
-            """, (status, found, wif, batch_id))
-            
-            safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
-            if wif:
-                safe_print(f"[BATCH {batch_id}] 📝 WIF saved: {wif[:20]}...")
-
+        # UPDATE PENTING: Menambahkan start_tm = GETDATE()
+        # Ini akan memperbarui waktu timestamp server setiap kali status berubah
+        # (inprogress, done, error, dll), sama seperti logic di cenlo.py
+        cursor.execute(f"""
+            UPDATE {TABLE} 
+            SET status = ?, found = ?, wif = ?, start_tm = GETDATE()
+            WHERE id = ?
+        """, (status, found, wif, batch_id))
+        
         conn.commit()
         cursor.close()
         conn.close()
+        
+        safe_print(f"[BATCH {batch_id}] ✅ Status updated to: {status}, Found: {found}")
+        if wif:
+            safe_print(f"[BATCH {batch_id}] 📝 WIF saved: {wif[:20]}...")
         return True
         
     except Exception as e:
         safe_print(f"[BATCH {batch_id}] ❌ Error updating batch status: {e}")
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except:
+                pass
             conn.close()
         return False
 
+# =============================================
+# CALCULATION & PARSING FUNCTIONS
+# =============================================
 def calculate_range_bits(start_hex, end_hex):
     """Menghitung range bits dari start dan end hex"""
     try:
         start_int = int(start_hex, 16)
         end_int = int(end_hex, 16)
         
-        # Hitung jumlah keys
         keys_count = end_int - start_int + 1
         
         if keys_count <= 1:
             return 1
         
-        # Hitung log2 dari jumlah keys
         log2_val = math.log2(keys_count)
         
         if log2_val.is_integer():
@@ -249,7 +252,6 @@ def parse_log_log(gpu_id):
     found_lines = []
     
     for line in lines:
-        # Hapus timestamp dari awal baris jika ada
         if ']' in line:
             line_content = line.split(']', 1)[1].strip()
         else:
@@ -346,24 +348,21 @@ def monitor_log_process(process, gpu_id, batch_id):
                 elif 'error' in line_lower or 'failed' in line_lower:
                     color_code = "\033[91m"  # Merah
                     should_print = True
-                # Speed info TIDAK ditampilkan ke terminal
-                # elif 'speed' in line_lower or 'key/s' in line_lower:
-                #     # Speed info TIDAK ditampilkan ke terminal
-                #     should_print = False
                 elif 'range' in line_lower and ('start' in line_lower or 'finished!' in line_lower):
-                    # Hanya tampilkan range start dan finish
                     color_code = "\033[94m"  # Biru
                     should_print = True
                 elif 'priv (' in line_lower or 'address:' in line_lower:
-                    # Private key atau address ditemukan
                     color_code = "\033[95m"  # Ungu
                     should_print = True
                 
                 if should_print:
                     safe_print(f"[GPU {gpu_id}] {color_code}{stripped_line}\033[0m")
     
-    return process.poll()  # Return exit code
+    return process.poll()
 
+# =============================================
+# MAIN RUNNER FUNCTIONS
+# =============================================
 def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
     """Run log binary langsung"""
     global STOP_SEARCH_FLAG
@@ -385,8 +384,8 @@ def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
         print(f"{gpu_prefix} {'='*60}")
     
     try:
+        # Update status ke inprogress (akan mentrigger update start_tm)
         if batch_id is not None:
-            # Ini akan mentrigger update start_tm karena statusnya 'inprogress'
             update_batch_status(batch_id, 'inprogress')
         
         # Simpan command ke log
@@ -408,12 +407,12 @@ def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
         # Parse output dari log file
         found_info = parse_log_log(gpu_id)
         
-        # UPDATE DATABASE SETELAH MENDAPATKAN FOUND_INFO
+        # UPDATE DATABASE SETELAH SELESAI
         if batch_id is not None:
             found_status = 'Yes' if (found_info['found_count'] > 0 or found_info['found']) else 'No'
             wif_key = found_info['wif_key'] if found_info['wif_key'] else ''
             
-            # UPDATE KE DATABASE MESKIPUN STOP_SEARCH_FLAG AKTIF
+            # Update ke done/error (akan mentrigger update start_tm lagi)
             success = update_batch_status(batch_id, 'done', found_status, wif_key)
             
             if not success:
@@ -438,9 +437,7 @@ def run_log(gpu_id, start_hex, range_bits, address, batch_id=None):
                         print(f"\n[SYSTEM] 🚨 GLOBAL STOP_SEARCH_FLAG diaktifkan karena private key ditemukan!")
                         print(f"[GPU {gpu_id}] Found: {found_info['found_count']}")
                 else:
-                    # Tampilkan informasi selesai tanpa preview log (kecuali penting)
                     if found_info.get('speed_info'):
-                        # Tampilkan speed info terakhir
                         print(f"{gpu_prefix} {found_info['speed_info']}")
                     print(f"{gpu_prefix} Batch {batch_id} completed (Not Found).")
                     print(f"{gpu_prefix} Full log: {log_file}")
@@ -465,8 +462,6 @@ def gpu_worker(gpu_id, address):
     global CURRENT_GLOBAL_BATCH_ID, STOP_SEARCH_FLAG
     
     batches_processed = 0
-    
-    # Inisialisasi waktu update log untuk worker ini
     LAST_LOG_UPDATE_TIME[gpu_id] = datetime.now()
     
     while True:
@@ -494,7 +489,6 @@ def gpu_worker(gpu_id, address):
         
         # Skip jika sudah selesai atau sedang dikerjakan
         if status == 'done' or status == 'inprogress':
-            # Jangan print skip terlalu banyak agar log bersih
             if batch_id_to_process % 100 == 0: 
                 log_log_output(gpu_id, f"Skipping ID {batch_id_to_process} (Status: {status})")
             continue
@@ -503,18 +497,15 @@ def gpu_worker(gpu_id, address):
         end_range = batch['end_range']
         range_bits = calculate_range_bits(start_range, end_range)
         
-        # 3. Jalankan log (FUNGSI INI AKAN SELESAIKAN SEMUA PROSES TERMASUK UPDATE DATABASE)
+        # 3. Jalankan log
         return_code, found_info = run_log(gpu_id, start_range, range_bits, address, batch_id=batch_id_to_process)
         
         batches_processed += 1
-            
-        # Delay sedikit antar batch per GPU agar tidak terlalu spam request ke DB/Screen
         time.sleep(1)
 
     safe_print(f"[GPU {gpu_id}] 🛑 Worker stopped. Processed {batches_processed} batches.")
     log_log_output(gpu_id, f"Worker stopped. Processed {batches_processed} batches.")
     
-    # LAPORKAN KE DATABASE TERAKHIR JIKA PERLU
     if batches_processed > 0:
         log_log_output(gpu_id, f"Worker exit due to {'STOP_SEARCH_FLAG' if STOP_SEARCH_FLAG else 'normal completion'}")
 
@@ -522,19 +513,14 @@ def main():
     global STOP_SEARCH_FLAG, CURRENT_GLOBAL_BATCH_ID
     
     STOP_SEARCH_FLAG = False
-    
-    # Pastikan directory log ada
     ensure_log_dir()
     
     if len(sys.argv) < 2:
         print("Multi-GPU Batch Runner")
         print("Usage:")
-        print("  Multi-GPU DB: python3 bm.py --batch-db GPU_IDS START_ID ADDRESS")
-        print("  Example:      python3 bm.py --batch-db 0,1,2,3 1000 13zpGr...")
-        print("  Single Run:   python3 bm.py GPU_ID START_HEX RANGE_BITS ADDRESS")
-        print(f"\n📝 Log files will be saved in: {os.path.abspath(LOG_DIR)}")
-        print(f"📋 Log preview every {LOG_UPDATE_INTERVAL/60} minutes")
-        print(f"🚫 No real-time output to terminal (only saved to log)")
+        print("  Multi-GPU DB: python3 kamudb.py --batch-db GPU_IDS START_ID ADDRESS")
+        print("  Example:      python3 kamudb.py --batch-db 0,1,2 1000 13zpGr...")
+        print("  Single Run:   python3 kamudb.py GPU_ID START_HEX RANGE_BITS ADDRESS")
         sys.exit(1)
     
     # Mode Multi-GPU Database
@@ -543,10 +529,7 @@ def main():
         start_id = int(sys.argv[3])
         address = sys.argv[4]
         
-        # Parse list GPU (misal "0,1,2" -> [0, 1, 2])
         gpu_ids = [int(x.strip()) for x in gpu_ids_str.split(',')]
-        
-        # Set Global Start ID
         CURRENT_GLOBAL_BATCH_ID = start_id
         
         print(f"\n{'='*80}")
@@ -556,53 +539,37 @@ def main():
         print(f"Start ID    : {start_id}")
         print(f"Address     : {address}")
         print(f"Log Dir     : {os.path.abspath(LOG_DIR)}")
-        print(f"Log Preview : Every {LOG_UPDATE_INTERVAL/60} minutes ({LOG_LINES_TO_SHOW} lines)")
-        print(f"Terminal    : NO real-time output (quiet mode)")
         print(f"{'='*80}\n")
         
         threads = []
         
-        # Buat dan jalankan thread untuk setiap GPU
         for gpu in gpu_ids:
             t = threading.Thread(target=gpu_worker, args=(gpu, address))
-            t.daemon = True # Agar thread mati jika main program di kill
+            t.daemon = True
             threads.append(t)
             t.start()
             print(f"✅ Started worker thread for GPU {gpu}")
-            print(f"   Log file: {get_gpu_log_file(gpu)}")
         
-        # Main loop untuk menjaga program tetap berjalan dan handle KeyboardInterrupt
         try:
             while True:
-                # Cek apakah semua thread masih hidup
                 alive_threads = [t for t in threads if t.is_alive()]
                 if not alive_threads:
                     print("\nAll workers have finished.")
                     break
                 
-                # Cek STOP_SEARCH_FLAG
                 with STOP_SEARCH_FLAG_LOCK:
                     if STOP_SEARCH_FLAG:
                         print("\n🛑 Stop Flag Detected. Waiting for workers to finish current batches...")
-                        # Beri waktu worker untuk menyelesaikan batch yang sedang berjalan
-                        time.sleep(10)  # Beri waktu lebih lama
+                        time.sleep(10)
                         
                 time.sleep(2)
                 
-            # Wait for all threads dengan timeout lebih lama
             for t in threads:
                 t.join(timeout=15)
                 
             print(f"\n{'='*80}")
             print(f"🏁 PROGRAM COMPLETED")
             print(f"{'='*80}")
-            print(f"Stop Flag Status: {'ACTIVATED - Private Key Found!' if STOP_SEARCH_FLAG else 'Not Activated'}")
-            print(f"Check log files in: {os.path.abspath(LOG_DIR)}")
-            
-            # Verifikasi status batch terakhir
-            if STOP_SEARCH_FLAG:
-                print(f"\n📊 Checking final batch status in database...")
-                # Anda bisa menambahkan kode untuk memverifikasi status terakhir di sini
             
         except KeyboardInterrupt:
             print(f"\n\n{'='*80}")
@@ -610,28 +577,24 @@ def main():
             print(f"{'='*80}")
             with STOP_SEARCH_FLAG_LOCK:
                 STOP_SEARCH_FLAG = True
-            # Beri waktu worker untuk cleanup
             time.sleep(10)
-            print(f"Waiting for workers to finish...")
             for t in threads:
                 t.join(timeout=10)
             print(f"Clean shutdown completed.")
             
-    # Single run mode (Legacy support)
+    # Single run mode
     elif len(sys.argv) == 5:
         gpu_id = sys.argv[1]
         start_hex = sys.argv[2]
         range_bits = int(sys.argv[3])
         address = sys.argv[4]
         
-        # Pastikan directory log ada
         ensure_log_dir()
-        
         run_log(gpu_id, start_hex, range_bits, address)
         
     else:
         print("Invalid arguments")
-        print("Usage: python3 kamudbs.py --batch-db 0,1,2 1000 1Address...")
+        print("Usage: python3 kamudb.py --batch-db 0,1,2 1000 1Address...")
         
 if __name__ == "__main__":
     if not os.path.exists("./log"):
